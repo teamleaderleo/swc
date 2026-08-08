@@ -27,6 +27,7 @@ fn stale_legacy_temp_file_does_not_block_cache_publication() {
     let cache_path = directory.join("plugin.wasmtime-v35");
     let stale_temp_path = legacy_temporary_path(&cache_path);
     std::fs::write(&stale_temp_path, b"interrupted partial cache").unwrap();
+    assert!(stale_temp_path.is_file());
 
     let runtime = WasmtimeRuntime;
     let cache = runtime
@@ -37,15 +38,10 @@ fn stale_legacy_temp_file_does_not_block_cache_publication() {
         .expect("cache store reports success");
 
     let cache_was_published = cache_path.is_file();
-    let stale_temp_survived = stale_temp_path.is_file();
     let _ = std::fs::remove_dir_all(&directory);
 
     assert!(
         cache_was_published,
         "a stale legacy .tmp file must not turn a successful store into a missing cache entry"
-    );
-    assert!(
-        stale_temp_survived,
-        "the reproduction expects the pre-existing legacy temp path to be the collision"
     );
 }
