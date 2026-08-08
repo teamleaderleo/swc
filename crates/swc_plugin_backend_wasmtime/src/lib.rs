@@ -4,6 +4,8 @@ use anyhow::Context;
 use swc_common::sync::OnceCell;
 use swc_plugin_runner::runtime;
 
+mod filesystem_cache;
+
 /// Identifier for bytecode cache stored in local filesystem.
 ///
 /// This MUST be updated when bump up wasmtime.
@@ -79,38 +81,9 @@ impl runtime::Runtime for WasmtimeRuntime {
     }
 
     fn store_cache(&self, path: &Path, cache: &runtime::ModuleCache) -> anyhow::Result<()> {
-        use std::io::{ErrorKind, Write};
-
         let WasmtimeCache(module) = cache.0.downcast_ref().unwrap();
         let data = module.serialize()?;
-
-        // atomic write
-        //
-        // TODO use `with_added_extension`
-        let tmppath = {
-            let mut ext = path.extension().unwrap_or_default().to_owned();
-            ext.push(".tmp");
-            path.with_extension(ext)
-        };
-        let mut fd = match std::fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&tmppath)
-        {
-            Ok(fd) => fd,
-            Err(ref err) if err.kind() == ErrorKind::AlreadyExists => return Ok(()),
-            Err(err) => return Err(err.into()),
-        };
-
-        // If a write failure or process interruption occurs here,
-        // the tmp file cannot be rename, and the cache will never be successfully
-        // created.
-        //
-        // But it should be a low-probability event and will not affect program
-        // operation. Users can manually delete the cache.
-        fd.write_all(&data)?;
-        drop(fd);
-        std::fs::rename(&tmppath, path)?;
+        filesystem_cache::write_atomic(path, &data)?;
         Ok(())
     }
 
