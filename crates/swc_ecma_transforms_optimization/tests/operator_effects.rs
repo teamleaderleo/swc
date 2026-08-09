@@ -36,6 +36,16 @@ fn selected_array_member_preserves_instanceof_exception() {
 }
 
 #[test]
+fn primitive_lhs_does_not_prove_instanceof_false() {
+    fold("1 instanceof Constructor;", "1 instanceof Constructor;");
+}
+
+#[test]
+fn global_object_rhs_does_not_prove_instanceof_true() {
+    fold("({}) instanceof Object;", "({}) instanceof Object;");
+}
+
+#[test]
 fn selected_array_member_can_drop_strict_equality_control() {
     fold("[1 === 2, 42][1];", "42;");
 }
