@@ -21,6 +21,7 @@ fn expr_ctx() -> ExprCtx {
     }
 }
 
+#[allow(clippy::vec_box)]
 fn extracted_effects(source: &str) -> Vec<Box<Expr>> {
     let mut effects = Vec::new();
     expr_ctx().extract_side_effects_to(&mut effects, *parse_expr(source));
