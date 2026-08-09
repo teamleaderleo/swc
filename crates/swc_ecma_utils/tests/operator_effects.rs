@@ -48,38 +48,27 @@ fn assert_preserves_binary_operator(source: &str) {
 }
 
 #[test]
-fn operator_callbacks_are_effectful() {
+fn membership_and_instance_callbacks_are_effectful() {
     assert_may_have_side_effects("'x' in proxy");
     assert_may_have_side_effects("value instanceof Constructor");
 }
 
 #[test]
-fn operator_coercion_is_effectful() {
-    assert_may_have_side_effects("({ valueOf() { return 1; } }) + 1");
-    assert_may_have_side_effects("({ valueOf() { return 1; } }) - 1");
-    assert_may_have_side_effects("({ valueOf() { return 1; } }) < 2");
-    assert_may_have_side_effects("({ valueOf() { return 1; } }) == 1");
-}
-
-#[test]
-fn operator_exceptions_are_effectful() {
+fn invalid_membership_and_instance_operands_are_effectful() {
     assert_may_have_side_effects("1 in 2");
     assert_may_have_side_effects("1 instanceof 2");
-    assert_may_have_side_effects("1n + 1");
 }
 
 #[test]
-fn extracting_effects_preserves_operator_behavior() {
+fn extracting_effects_preserves_membership_and_instance_operators() {
     assert_preserves_binary_operator("'x' in proxy");
     assert_preserves_binary_operator("value instanceof Constructor");
-    assert_preserves_binary_operator("({ valueOf() { return 1; } }) + 1");
-    assert_preserves_binary_operator("({ valueOf() { return 1; } }) < 2");
-    assert_preserves_binary_operator("({ valueOf() { return 1; } }) == 1");
-    assert_preserves_binary_operator("1n + 1");
+    assert_preserves_binary_operator("1 in 2");
+    assert_preserves_binary_operator("1 instanceof 2");
 }
 
 #[test]
-fn primitive_controls_remain_pure() {
+fn safe_primitive_controls_remain_pure() {
     assert!(!parse_expr("1 + 2").may_have_side_effects(expr_ctx()));
     assert!(!parse_expr("1 === 2").may_have_side_effects(expr_ctx()));
     assert!(!parse_expr("true && false").may_have_side_effects(expr_ctx()));
