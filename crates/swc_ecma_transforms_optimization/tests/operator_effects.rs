@@ -23,21 +23,18 @@ fn fold(src: &str, expected: &str) {
 }
 
 #[test]
-fn selected_array_member_preserves_operator_coercion() {
+fn selected_array_member_preserves_membership_and_instance_callbacks() {
+    fold("['x' in proxy, 42][1];", "'x' in proxy, 42;");
     fold(
-        "[({ valueOf() { return 1; } }) + 1, 42][1];",
-        "({ valueOf() { return 1; } }) + 1, 42;",
-    );
-
-    fold(
-        "[({ valueOf() { return 1; } }) == 1, 42][1];",
-        "({ valueOf() { return 1; } }) == 1, 42;",
+        "[value instanceof Constructor, 42][1];",
+        "value instanceof Constructor, 42;",
     );
 }
 
 #[test]
-fn selected_array_member_preserves_operator_exception() {
-    fold("[1n + 1, 42][1];", "1n + 1, 42;");
+fn selected_array_member_preserves_membership_and_instance_exceptions() {
+    fold("[1 in 2, 42][1];", "1 in 2, 42;");
+    fold("[1 instanceof 2, 42][1];", "1 instanceof 2, 42;");
 }
 
 #[test]
