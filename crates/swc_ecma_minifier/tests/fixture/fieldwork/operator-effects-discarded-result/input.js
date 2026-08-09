@@ -14,6 +14,13 @@ const effects = [];
     },
 }) == 1;
 
+({
+    valueOf() {
+        effects.push("lt");
+        return 1;
+    },
+}) < 2;
+
 let mixedBigIntThrew = false;
 try {
     1n + 1;
