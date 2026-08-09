@@ -1,4 +1,4 @@
-function mapped(b) {
+function mapped(b, c, d, e, f) {
     return (b = 2, arguments[0]);
 }
 
