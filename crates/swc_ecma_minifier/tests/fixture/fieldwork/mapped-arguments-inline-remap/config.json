@@ -1,5 +1,6 @@
 {
     "defaults": false,
     "unused": true,
-    "inline": 3
+    "inline": 3,
+    "toplevel": true
 }
