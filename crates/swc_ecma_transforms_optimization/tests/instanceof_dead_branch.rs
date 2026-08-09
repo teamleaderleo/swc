@@ -38,9 +38,9 @@ fn empty_if_preserves_instanceof_exception() {
 }
 
 #[test]
-fn empty_if_drops_pure_comparison_control() {
+fn empty_if_reduces_pure_comparison_to_child_effects() {
     fold(
         "function test(value) { if (value === 2) {} }",
-        "function test(value) {}",
+        "function test(value) { value; }",
     );
 }
