@@ -13,7 +13,13 @@ fn shake(src: &str, expected: &str) {
 
             (
                 resolver(unresolved_mark, top_level_mark, false),
-                dce(Config::default(), unresolved_mark),
+                dce(
+                    Config {
+                        top_level: false,
+                        ..Default::default()
+                    },
+                    unresolved_mark,
+                ),
             )
         },
         src,
