@@ -189,13 +189,13 @@ impl VisitMut for Remover {
     fn visit_mut_expr_or_spreads(&mut self, n: &mut Vec<ExprOrSpread>) {
         self.maybe_par(cpu_count() * 8, n, |v, n| {
             n.visit_mut_with(v);
-        })
+        });
     }
 
     fn visit_mut_exprs(&mut self, n: &mut Vec<Box<Expr>>) {
         self.maybe_par(cpu_count() * 8, n, |v, n| {
             n.visit_mut_with(v);
-        })
+        });
     }
 
     fn visit_mut_for_stmt(&mut self, s: &mut ForStmt) {
@@ -866,7 +866,7 @@ impl VisitMut for Remover {
                                                 span: DUMMY_SP,
                                                 name: name.into(),
                                                 init: None,
-                                                definite: false,
+                                                definite: Default::default(),
                                             },
                                         ));
                                     }
