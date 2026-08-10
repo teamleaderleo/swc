@@ -1111,11 +1111,11 @@ fn test_fold_get_elem2_2() {
 
 #[test]
 fn test_fold_array_lit_spread_get_elem() {
-    fold("x = [...[0    ]][0]", "x = 0");
-    fold("x = [0, 1, ...[2, 3, 4]][3]", "x = 3");
-    fold("x = [...[0, 1], 2, ...[3, 4]][3]", "x = 3");
-    fold("x = [...[...[0, 1], 2, 3], 4][0]", "x = 0");
-    fold("x = [...[...[0, 1], 2, 3], 4][3]", "x = 3");
+    fold("x = [...[0    ]][0]", "x = 0;");
+    fold("x = [0, 1, ...[2, 3, 4]][3]", "x = 3;");
+    fold("x = [...[0, 1], 2, ...[3, 4]][3]", "x = 3;");
+    fold("x = [...[...[0, 1], 2, 3], 4][0]", "x = 0;");
+    fold("x = [...[...[0, 1], 2, 3], 4][3]", "x = 3;");
     // fold("x = [...[]][100]", "x = void 0;");
     // fold("x = [...[0]][100]", "x = void 0;");
 }
@@ -1582,7 +1582,7 @@ fn test_fold_object_literal_ref1() {
     // Notice `a` isn't invoked, so behavior didn't change.
     fold(
         "var x = {a() { return this; }}.a;",
-        "var x = function(){return this};",
+        "var x = function() { return this; };",
     );
     // `super` is invisibly captures the object that declared the method so we can't
     // fold.
