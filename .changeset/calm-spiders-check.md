@@ -5,4 +5,4 @@ swc_ecma_transforms_optimization: patch
 swc_ecma_utils: patch
 ---
 
-fix(es/minifier): Preserve observable `instanceof` semantics during optimization
+fix(es): Preserve observable `instanceof` evaluation during optimization
