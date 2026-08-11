@@ -1,3 +1,3 @@
-console.log({
+console.log(({
     __proto__: null
-} instanceof Object);
+}) instanceof Object);
