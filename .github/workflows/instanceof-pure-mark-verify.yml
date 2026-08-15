@@ -26,38 +26,33 @@ jobs:
           path = Path("crates/swc_ecma_minifier/src/compress/optimize/mod.rs")
           text = path.read_text()
 
-          old = """    fn is_pure_call_value(&self, e: &Expr) -> bool {
-"""
-          new = """    /// Returns true if `e`'s value is produced directly by a pure-marked call.
-    ///
-    /// Parentheses and sequence tails are value-transparent. Deliberately stop
-    /// there instead of performing general value-flow analysis in this hot path.
-    fn is_pure_call_value(&self, e: &Expr) -> bool {
-"""
+          old = "    fn is_pure_call_value(&self, e: &Expr) -> bool {\n"
+          new = (
+              "    /// Returns true if `e`'s value is produced directly by a pure-marked call.\n"
+              "    ///\n"
+              "    /// Parentheses and sequence tails are value-transparent. Deliberately stop\n"
+              "    /// there instead of performing general value-flow analysis in this hot path.\n"
+              "    fn is_pure_call_value(&self, e: &Expr) -> bool {\n"
+          )
           if text.count(old) != 1:
               raise RuntimeError("helper insertion point changed")
           text = text.replace(old, new, 1)
 
-          old = """            Expr::Bin(BinExpr {
-                op: op!(\"instanceof\"),
-                left,
-                right,
-                ..
-            }) if self.is_pure_call_value(left) || self.is_pure_call_value(right) => {
-                return Some(e.take());
-            }
-"""
-          new = """            // Purity is attached to the call itself; it does not make an `instanceof`
-            // operation consuming the returned value side-effect-free.
-            Expr::Bin(BinExpr {
-                op: op!(\"instanceof\"),
-                left,
-                right,
-                ..
-            }) if self.is_pure_call_value(left) || self.is_pure_call_value(right) => {
-                return Some(e.take());
-            }
-"""
+          old = (
+              "            Expr::Bin(BinExpr {\n"
+              "                op: op!(\"instanceof\"),\n"
+              "                left,\n"
+              "                right,\n"
+              "                ..\n"
+              "            }) if self.is_pure_call_value(left) || self.is_pure_call_value(right) => {\n"
+              "                return Some(e.take());\n"
+              "            }\n"
+          )
+          new = (
+              "            // Purity is attached to the call itself; it does not make an `instanceof`\n"
+              "            // operation consuming the returned value side-effect-free.\n"
+              + old
+          )
           if text.count(old) != 1:
               raise RuntimeError("instanceof insertion point changed")
           path.write_text(text.replace(old, new, 1))
