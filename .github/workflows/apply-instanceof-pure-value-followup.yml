@@ -24,69 +24,49 @@ jobs:
 
           optimize = Path("crates/swc_ecma_minifier/src/compress/optimize/mod.rs")
           text = optimize.read_text()
-          old = '''    fn is_pure_call_value(&self, e: &Expr) -> bool {
-              match e {
-                  Expr::Call(CallExpr { ctxt, .. }) => ctxt.has_mark(self.marks.pure),
-                  Expr::Paren(ParenExpr { expr, .. }) => self.is_pure_call_value(expr),
-                  Expr::Seq(SeqExpr { exprs, .. }) => exprs
-                      .last()
-                      .is_some_and(|expr| self.is_pure_call_value(expr)),
-                  _ => false,
-              }
-          }
-          '''
-          new = '''    fn is_pure_marked_value(&self, e: &Expr) -> bool {
-              match e {
-                  Expr::Call(CallExpr { ctxt, .. }) => ctxt.has_mark(self.marks.pure),
-                  Expr::New(NewExpr { ctxt, .. }) => ctxt.has_mark(self.marks.pure),
-                  Expr::TaggedTpl(TaggedTpl { ctxt, .. }) => ctxt.has_mark(self.marks.pure),
-                  Expr::Paren(ParenExpr { expr, .. }) => self.is_pure_marked_value(expr),
-                  Expr::Seq(SeqExpr { exprs, .. }) => exprs
-                      .last()
-                      .is_some_and(|expr| self.is_pure_marked_value(expr)),
-                  _ => false,
-              }
-          }
-          '''
-          if old not in text:
-              raise SystemExit("expected helper not found")
-          text = text.replace(old, new, 1)
-          text = text.replace(
-              "self.is_pure_call_value(left) || self.is_pure_call_value(right)",
-              "self.is_pure_marked_value(left) || self.is_pure_marked_value(right)",
-              1,
+          call_arm = "            Expr::Call(CallExpr { ctxt, .. }) => ctxt.has_mark(self.marks.pure),\n"
+          marked_arms = (
+              call_arm
+              + "            Expr::New(NewExpr { ctxt, .. }) => ctxt.has_mark(self.marks.pure),\n"
+              + "            Expr::TaggedTpl(TaggedTpl { ctxt, .. }) => ctxt.has_mark(self.marks.pure),\n"
           )
+          if call_arm not in text:
+              raise SystemExit("expected pure CallExpr arm not found")
+          if "Expr::New(NewExpr { ctxt, .. })" in text:
+              raise SystemExit("NewExpr arm already present")
+          text = text.replace(call_arm, marked_arms, 1)
+          text = text.replace("is_pure_call_value", "is_pure_marked_value")
           optimize.write_text(text)
 
           fixture_in = Path("crates/swc_ecma_minifier/tests/fixture/operator-effects/instanceof-pure-func-value/input.js")
-          text = fixture_in.read_text()
-          addition = '''
-
-          function new_value() {
-              bar() instanceof /*#__PURE__*/ new Foo();
-          }
-
-          function tagged_value() {
-              bar() instanceof foo`x`;
-          }
-          '''
+          text = fixture_in.read_text().rstrip()
           if "function new_value()" in text:
               raise SystemExit("new-value fixture already present")
-          fixture_in.write_text(text.rstrip() + addition)
+          text += '''
+
+function new_value() {
+    bar() instanceof /*#__PURE__*/ new Foo();
+}
+
+function tagged_value() {
+    bar() instanceof foo`x`;
+}
+'''
+          fixture_in.write_text(text)
 
           fixture_out = Path("crates/swc_ecma_minifier/tests/fixture/operator-effects/instanceof-pure-func-value/output.js")
-          text = fixture_out.read_text()
-          addition = '''
-          function new_value() {
-              bar() instanceof /*#__PURE__*/ new Foo();
-          }
-          function tagged_value() {
-              bar() instanceof foo`x`;
-          }
-          '''
+          text = fixture_out.read_text().rstrip()
           if "function new_value()" in text:
               raise SystemExit("new-value output already present")
-          fixture_out.write_text(text.rstrip() + "\n" + addition)
+          text += '''
+function new_value() {
+    bar() instanceof /*#__PURE__*/ new Foo();
+}
+function tagged_value() {
+    bar() instanceof foo`x`;
+}
+'''
+          fixture_out.write_text(text)
           PY
 
       - name: Format and verify focused fixture
