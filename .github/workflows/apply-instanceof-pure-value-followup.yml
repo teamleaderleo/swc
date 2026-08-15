@@ -25,11 +25,7 @@ jobs:
           optimize = Path("crates/swc_ecma_minifier/src/compress/optimize/mod.rs")
           text = optimize.read_text()
           call_arm = "            Expr::Call(CallExpr { ctxt, .. }) => ctxt.has_mark(self.marks.pure),\n"
-          marked_arms = (
-              call_arm
-              + "            Expr::New(NewExpr { ctxt, .. }) => ctxt.has_mark(self.marks.pure),\n"
-              + "            Expr::TaggedTpl(TaggedTpl { ctxt, .. }) => ctxt.has_mark(self.marks.pure),\n"
-          )
+          marked_arms = call_arm + "            Expr::New(NewExpr { ctxt, .. }) => ctxt.has_mark(self.marks.pure),\n" + "            Expr::TaggedTpl(TaggedTpl { ctxt, .. }) => ctxt.has_mark(self.marks.pure),\n"
           if call_arm not in text:
               raise SystemExit("expected pure CallExpr arm not found")
           if "Expr::New(NewExpr { ctxt, .. })" in text:
@@ -42,30 +38,14 @@ jobs:
           text = fixture_in.read_text().rstrip()
           if "function new_value()" in text:
               raise SystemExit("new-value fixture already present")
-          text += '''
-
-function new_value() {
-    bar() instanceof /*#__PURE__*/ new Foo();
-}
-
-function tagged_value() {
-    bar() instanceof foo`x`;
-}
-'''
+          text += "\n\nfunction new_value() {\n    bar() instanceof /*#__PURE__*/ new Foo();\n}\n\nfunction tagged_value() {\n    bar() instanceof foo`x`;\n}\n"
           fixture_in.write_text(text)
 
           fixture_out = Path("crates/swc_ecma_minifier/tests/fixture/operator-effects/instanceof-pure-func-value/output.js")
           text = fixture_out.read_text().rstrip()
           if "function new_value()" in text:
               raise SystemExit("new-value output already present")
-          text += '''
-function new_value() {
-    bar() instanceof /*#__PURE__*/ new Foo();
-}
-function tagged_value() {
-    bar() instanceof foo`x`;
-}
-'''
+          text += "\nfunction new_value() {\n    bar() instanceof /*#__PURE__*/ new Foo();\n}\nfunction tagged_value() {\n    bar() instanceof foo`x`;\n}\n"
           fixture_out.write_text(text)
           PY
 
