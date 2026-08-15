@@ -17,6 +17,9 @@ jobs:
           ref: fix/instanceof-observable-effects
           fetch-depth: 0
 
+      - name: Install rustfmt
+        run: rustup component add rustfmt
+
       - name: Apply narrow pure-value followup
         run: |
           python - <<'PY'
