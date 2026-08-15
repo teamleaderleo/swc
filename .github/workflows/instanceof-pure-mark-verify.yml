@@ -1,4 +1,4 @@
-name: diagnose instanceof pure-mark experiment
+name: test instanceof narrow exception candidate
 
 on:
   push:
@@ -9,76 +9,48 @@ permissions:
   contents: read
 
 jobs:
-  diagnose:
+  candidate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: experiment/instanceof-pure-mark
-          fetch-depth: 0
 
-      - name: Compare narrowed baseline and pure-mark rule
-        shell: bash
+      - name: Apply ordinary-instanceof discarded-result fallback
+        shell: python
         run: |
-          set -u
-          path=crates/swc_ecma_minifier/src/compress/optimize/mod.rs
-          cp "$path" /tmp/current-mod.rs
-          : > instanceof-ab.log
-
-          echo '=== a39678b narrowed baseline ===' | tee -a instanceof-ab.log
-          git show a39678bd0226a394847605b6874b1eab7ad7f32c:"$path" > "$path"
-          set +e
-          cargo test -p swc_ecma_minifier --test compress dont_change_in_or_instanceof_expressions -- --nocapture 2>&1 | tee -a instanceof-ab.log
-          baseline_status=${PIPESTATUS[0]}
-          set -e
-          echo "baseline_status=$baseline_status" | tee -a instanceof-ab.log
-
-          cp /tmp/current-mod.rs "$path"
-
-          python <<'PY'
           from pathlib import Path
 
           path = Path("crates/swc_ecma_minifier/src/compress/optimize/mod.rs")
           text = path.read_text()
           old = (
-              "            }) if self.is_pure_call_value(left) || self.is_pure_call_value(right) => {\n"
-              "                return Some(e.take());\n"
-              "            }\n"
+              "                        | op!(\"<\")\n"
+              "                        | op!(\"<=\")\n"
+              "                        | op!(\">\")\n"
+              "                        | op!(\">=\"),\n"
           )
           new = (
-              "            }) if self.is_pure_call_value(left) || self.is_pure_call_value(right) => {\n"
-              "                eprintln!(\n"
-              "                    \"PURE_MARK_INSTANCEOF left={} right={}\",\n"
-              "                    dump(&**left, false),\n"
-              "                    dump(&**right, false)\n"
-              "                );\n"
-              "                return Some(e.take());\n"
-              "            }\n"
+              "                        | op!(\"<\")\n"
+              "                        | op!(\"<=\")\n"
+              "                        | op!(\">\")\n"
+              "                        | op!(\">=\")\n"
+              "                        | op!(\"instanceof\"),\n"
           )
           if text.count(old) != 1:
-              raise RuntimeError("pure-mark guard changed")
+              raise RuntimeError("binary effect-extraction list changed")
           path.write_text(text.replace(old, new, 1))
-          PY
 
-          echo '=== current pure-mark rule, instrumented ===' | tee -a instanceof-ab.log
-          set +e
-          cargo test -p swc_ecma_minifier --test compress dont_change_in_or_instanceof_expressions -- --nocapture 2>&1 | tee -a instanceof-ab.log
-          current_status=${PIPESTATUS[0]}
-          set -e
-          echo "current_status=$current_status" | tee -a instanceof-ab.log
+      - name: Format and compile
+        run: |
+          cargo fmt --all -- --check
+          git diff --check
+          cargo check -p swc_ecma_minifier --tests
 
-          echo '=== focused pure-mark matrix, instrumented ===' | tee -a instanceof-ab.log
-          set +e
-          cargo test -p swc_ecma_minifier --test compress instanceof_pure_func_value -- --nocapture 2>&1 | tee -a instanceof-ab.log
-          matrix_status=${PIPESTATUS[0]}
-          set -e
-          echo "matrix_status=$matrix_status" | tee -a instanceof-ab.log
+      - name: Literal instanceof control
+        run: cargo test -p swc_ecma_minifier --test compress dont_change_in_or_instanceof_expressions -- --nocapture
 
-          exit 0
+      - name: Pure-mark behavior matrix
+        run: cargo test -p swc_ecma_minifier --test compress instanceof_pure_func_value -- --nocapture
 
-      - name: Upload diagnostic log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: instanceof-pure-mark-ab
-          path: instanceof-ab.log
+      - name: Restored Terser relational fixture
+        run: cargo test -p swc_ecma_minifier --test compress pure_funcs__relational -- --nocapture
