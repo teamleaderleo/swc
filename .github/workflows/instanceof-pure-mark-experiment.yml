@@ -88,13 +88,13 @@ jobs:
               bar() instanceof foo();
           }
           function sequence_value() {
-              (bar(), foo()) instanceof baz();
+              bar(), foo() instanceof baz();
           }
           function sequence_control() {
               bar(), baz();
           }
           function annotation() {
-              qux() instanceof bar();
+              /*#__PURE__*/ qux() instanceof bar();
           }
           function in_control() {
               bar();
