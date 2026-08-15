@@ -1,0 +1,107 @@
+name: apply instanceof pure-value followup
+
+on:
+  push:
+    branches:
+      - experiment/instanceof-pure-mark
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/instanceof-observable-effects
+          fetch-depth: 0
+
+      - name: Apply narrow pure-value followup
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          optimize = Path("crates/swc_ecma_minifier/src/compress/optimize/mod.rs")
+          text = optimize.read_text()
+          old = '''    fn is_pure_call_value(&self, e: &Expr) -> bool {
+              match e {
+                  Expr::Call(CallExpr { ctxt, .. }) => ctxt.has_mark(self.marks.pure),
+                  Expr::Paren(ParenExpr { expr, .. }) => self.is_pure_call_value(expr),
+                  Expr::Seq(SeqExpr { exprs, .. }) => exprs
+                      .last()
+                      .is_some_and(|expr| self.is_pure_call_value(expr)),
+                  _ => false,
+              }
+          }
+          '''
+          new = '''    fn is_pure_marked_value(&self, e: &Expr) -> bool {
+              match e {
+                  Expr::Call(CallExpr { ctxt, .. }) => ctxt.has_mark(self.marks.pure),
+                  Expr::New(NewExpr { ctxt, .. }) => ctxt.has_mark(self.marks.pure),
+                  Expr::TaggedTpl(TaggedTpl { ctxt, .. }) => ctxt.has_mark(self.marks.pure),
+                  Expr::Paren(ParenExpr { expr, .. }) => self.is_pure_marked_value(expr),
+                  Expr::Seq(SeqExpr { exprs, .. }) => exprs
+                      .last()
+                      .is_some_and(|expr| self.is_pure_marked_value(expr)),
+                  _ => false,
+              }
+          }
+          '''
+          if old not in text:
+              raise SystemExit("expected helper not found")
+          text = text.replace(old, new, 1)
+          text = text.replace(
+              "self.is_pure_call_value(left) || self.is_pure_call_value(right)",
+              "self.is_pure_marked_value(left) || self.is_pure_marked_value(right)",
+              1,
+          )
+          optimize.write_text(text)
+
+          fixture_in = Path("crates/swc_ecma_minifier/tests/fixture/operator-effects/instanceof-pure-func-value/input.js")
+          text = fixture_in.read_text()
+          addition = '''
+
+          function new_value() {
+              bar() instanceof /*#__PURE__*/ new Foo();
+          }
+
+          function tagged_value() {
+              bar() instanceof foo`x`;
+          }
+          '''
+          if "function new_value()" in text:
+              raise SystemExit("new-value fixture already present")
+          fixture_in.write_text(text.rstrip() + addition)
+
+          fixture_out = Path("crates/swc_ecma_minifier/tests/fixture/operator-effects/instanceof-pure-func-value/output.js")
+          text = fixture_out.read_text()
+          addition = '''
+          function new_value() {
+              bar() instanceof /*#__PURE__*/ new Foo();
+          }
+          function tagged_value() {
+              bar() instanceof foo`x`;
+          }
+          '''
+          if "function new_value()" in text:
+              raise SystemExit("new-value output already present")
+          fixture_out.write_text(text.rstrip() + "\n" + addition)
+          PY
+
+      - name: Format and verify focused fixture
+        run: |
+          cargo fmt --all
+          git diff --check
+          cargo test -p swc_ecma_minifier --test compress instanceof_pure_func_value -- --nocapture
+
+      - name: Commit to PR branch
+        run: |
+          git config user.name "Leo"
+          git config user.email "cheerleaderleo@outlook.com"
+          git add \
+            crates/swc_ecma_minifier/src/compress/optimize/mod.rs \
+            crates/swc_ecma_minifier/tests/fixture/operator-effects/instanceof-pure-func-value/input.js \
+            crates/swc_ecma_minifier/tests/fixture/operator-effects/instanceof-pure-func-value/output.js
+          git commit -m "fix(es): preserve pure-marked instanceof values"
+          git push origin HEAD:fix/instanceof-observable-effects
