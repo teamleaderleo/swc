@@ -140,6 +140,9 @@ jobs:
               "| terser.js | 1.08 MiB | 446.63 KiB | 120.49 KiB |",
           )
 
+      - name: Install rustfmt
+        run: rustup component add rustfmt
+
       - name: Format and check whitespace
         run: |
           cargo fmt --all
