@@ -40,19 +40,21 @@ jobs:
 
           path = Path("crates/swc_ecma_minifier/src/compress/optimize/mod.rs")
           text = path.read_text()
-          old = '''            }) if self.is_pure_call_value(left) || self.is_pure_call_value(right) => {
-                return Some(e.take());
-            }
-'''
-          new = '''            }) if self.is_pure_call_value(left) || self.is_pure_call_value(right) => {
-                eprintln!(
-                    "PURE_MARK_INSTANCEOF left={} right={}",
-                    dump(&**left, false),
-                    dump(&**right, false)
-                );
-                return Some(e.take());
-            }
-'''
+          old = (
+              "            }) if self.is_pure_call_value(left) || self.is_pure_call_value(right) => {\n"
+              "                return Some(e.take());\n"
+              "            }\n"
+          )
+          new = (
+              "            }) if self.is_pure_call_value(left) || self.is_pure_call_value(right) => {\n"
+              "                eprintln!(\n"
+              "                    \"PURE_MARK_INSTANCEOF left={} right={}\",\n"
+              "                    dump(&**left, false),\n"
+              "                    dump(&**right, false)\n"
+              "                );\n"
+              "                return Some(e.take());\n"
+              "            }\n"
+          )
           if text.count(old) != 1:
               raise RuntimeError("pure-mark guard changed")
           path.write_text(text.replace(old, new, 1))
