@@ -1,0 +1,143 @@
+name: instanceof pure-mark experiment
+
+on:
+  push:
+    branches:
+      - experiment/instanceof-pure-mark
+
+permissions:
+  contents: write
+
+jobs:
+  experiment:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: experiment/instanceof-pure-mark
+
+      - name: Apply pure-mark experiment
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"{path}: expected one match, found {count}")
+              p.write_text(text.replace(old, new, 1))
+
+          replace(
+              "crates/swc_ecma_minifier/src/compress/optimize/mod.rs",
+              "    fn bin_has_direct_invalid_child(e: &Expr) -> bool {\n        matches!(\n            e,\n            Expr::Bin(BinExpr { left, right, .. }) if left.is_invalid() || right.is_invalid()\n        )\n    }\n\n    /// Returns [None] if expression is side-effect-free.",
+              "    fn bin_has_direct_invalid_child(e: &Expr) -> bool {\n        matches!(\n            e,\n            Expr::Bin(BinExpr { left, right, .. }) if left.is_invalid() || right.is_invalid()\n        )\n    }\n\n    fn is_pure_call_value(&self, e: &Expr) -> bool {\n        match e {\n            Expr::Call(CallExpr { ctxt, .. }) => ctxt.has_mark(self.marks.pure),\n            Expr::Paren(ParenExpr { expr, .. }) => self.is_pure_call_value(expr),\n            Expr::Seq(SeqExpr { exprs, .. }) => exprs\n                .last()\n                .is_some_and(|expr| self.is_pure_call_value(expr)),\n            _ => false,\n        }\n    }\n\n    /// Returns [None] if expression is side-effect-free.",
+          )
+          replace(
+              "crates/swc_ecma_minifier/src/compress/optimize/mod.rs",
+              "            Expr::Bin(BinExpr {\n                op: op!(\"instanceof\"),\n                ..\n            }) => return Some(e.take()),",
+              "            Expr::Bin(BinExpr {\n                op: op!(\"instanceof\"),\n                left,\n                right,\n                ..\n            }) if self.is_pure_call_value(left) || self.is_pure_call_value(right) => {\n                return Some(e.take());\n            }",
+          )
+
+          Path("crates/swc_ecma_minifier/tests/fixture/operator-effects/instanceof-pure-func-value/input.js").write_text("""function callback() {
+              foo() instanceof bar();
+          }
+
+          function invalid() {
+              foo() instanceof 2;
+          }
+
+          function rhs() {
+              bar() instanceof foo();
+          }
+
+          function sequence_value() {
+              (bar(), foo()) instanceof baz();
+          }
+
+          function sequence_control() {
+              (foo(), bar()) instanceof baz();
+          }
+
+          function annotation() {
+              /*#__PURE__*/ qux() instanceof bar();
+          }
+
+          function in_control() {
+              foo() in bar();
+          }
+
+          function equality_control() {
+              foo() === bar();
+          }
+
+          function ordinary_control() {
+              baz() instanceof bar();
+          }
+          """)
+
+          Path("crates/swc_ecma_minifier/tests/fixture/operator-effects/instanceof-pure-func-value/output.js").write_text("""function callback() {
+              foo() instanceof bar();
+          }
+          function invalid() {
+              foo() instanceof 2;
+          }
+          function rhs() {
+              bar() instanceof foo();
+          }
+          function sequence_value() {
+              (bar(), foo()) instanceof baz();
+          }
+          function sequence_control() {
+              bar(), baz();
+          }
+          function annotation() {
+              qux() instanceof bar();
+          }
+          function in_control() {
+              bar();
+          }
+          function equality_control() {
+              bar();
+          }
+          function ordinary_control() {
+              baz(), bar();
+          }
+          """)
+
+          replace(
+              "crates/swc_ecma_minifier/tests/libs-size.snapshot.md",
+              "| terser.js | 1.08 MiB | 446.64 KiB | 120.50 KiB |",
+              "| terser.js | 1.08 MiB | 446.63 KiB | 120.49 KiB |",
+          )
+
+      - name: Install rustfmt
+        run: rustup component add rustfmt
+
+      - name: Format and check whitespace
+        run: |
+          cargo fmt --all
+          cargo fmt --all -- --check
+          git diff --check
+
+      - name: Compile minifier tests
+        run: cargo check -p swc_ecma_minifier --tests
+
+      - name: Locate focused test
+        run: |
+          cargo test -p swc_ecma_minifier --test compress -- --list > /tmp/compress-tests.txt
+          grep -q "instanceof_pure_func_value" /tmp/compress-tests.txt
+
+      - name: Run focused fixture
+        run: cargo test -p swc_ecma_minifier --test compress instanceof_pure_func_value -- --nocapture
+
+      - name: Commit experiment
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm .github/workflows/instanceof-pure-mark-experiment.yml
+          git add -A
+          git commit -m "experiment: preserve instanceof for pure-marked values"
+          git push origin HEAD:experiment/instanceof-pure-mark
