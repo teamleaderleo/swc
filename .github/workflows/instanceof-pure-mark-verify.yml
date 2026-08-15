@@ -1,0 +1,96 @@
+name: verify instanceof pure-mark experiment
+
+on:
+  push:
+    branches:
+      - experiment/instanceof-pure-mark
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: experiment/instanceof-pure-mark
+          submodules: recursive
+
+      - name: Document narrow value rule
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("crates/swc_ecma_minifier/src/compress/optimize/mod.rs")
+          text = path.read_text()
+
+          old = """    fn is_pure_call_value(&self, e: &Expr) -> bool {
+"""
+          new = """    /// Returns true if `e`'s value is produced directly by a pure-marked call.
+    ///
+    /// Parentheses and sequence tails are value-transparent. Deliberately stop
+    /// there instead of performing general value-flow analysis in this hot path.
+    fn is_pure_call_value(&self, e: &Expr) -> bool {
+"""
+          if text.count(old) != 1:
+              raise RuntimeError("helper insertion point changed")
+          text = text.replace(old, new, 1)
+
+          old = """            Expr::Bin(BinExpr {
+                op: op!(\"instanceof\"),
+                left,
+                right,
+                ..
+            }) if self.is_pure_call_value(left) || self.is_pure_call_value(right) => {
+                return Some(e.take());
+            }
+"""
+          new = """            // Purity is attached to the call itself; it does not make an `instanceof`
+            // operation consuming the returned value side-effect-free.
+            Expr::Bin(BinExpr {
+                op: op!(\"instanceof\"),
+                left,
+                right,
+                ..
+            }) if self.is_pure_call_value(left) || self.is_pure_call_value(right) => {
+                return Some(e.take());
+            }
+"""
+          if text.count(old) != 1:
+              raise RuntimeError("instanceof insertion point changed")
+          path.write_text(text.replace(old, new, 1))
+
+      - name: Install rustfmt and clippy
+        run: rustup component add rustfmt clippy
+
+      - name: Format and whitespace
+        run: |
+          cargo fmt --all
+          cargo fmt --all -- --check
+          git diff --check
+
+      - name: Clippy minifier
+        run: cargo clippy -p swc_ecma_minifier --all-targets -- -D warnings
+
+      - name: Regenerate library-size snapshot
+        run: UPDATE=1 cargo test -p swc_ecma_minifier --test size bench_libs -- --nocapture
+
+      - name: Verify library-size snapshot
+        run: cargo test -p swc_ecma_minifier --test size bench_libs -- --nocapture
+
+      - name: Focused behavior matrix
+        run: cargo test -p swc_ecma_minifier --test compress instanceof_pure_func_value -- --nocapture
+
+      - name: Full minifier crate
+        run: cargo test -p swc_ecma_minifier --no-fail-fast
+
+      - name: Commit verified experiment
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm .github/workflows/instanceof-pure-mark-verify.yml
+          git add -A
+          git commit -m "experiment: verify pure-marked instanceof handling"
+          git push origin HEAD:experiment/instanceof-pure-mark
