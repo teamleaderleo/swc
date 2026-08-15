@@ -1,4 +1,4 @@
-name: verify instanceof pure-mark experiment
+name: diagnose instanceof pure-mark experiment
 
 on:
   push:
@@ -6,11 +6,10 @@ on:
       - experiment/instanceof-pure-mark
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  verify:
-    if: github.actor != 'github-actions[bot]'
+  diagnose:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,92 +17,66 @@ jobs:
           ref: experiment/instanceof-pure-mark
           submodules: recursive
 
-      - name: Document narrow value rule
-        shell: python
+      - name: Compare narrowed baseline and pure-mark rule
+        shell: bash
         run: |
+          set -u
+          path=crates/swc_ecma_minifier/src/compress/optimize/mod.rs
+          cp "$path" /tmp/current-mod.rs
+          : > instanceof-ab.log
+
+          echo '=== a39678b narrowed baseline ===' | tee -a instanceof-ab.log
+          git show a39678bd0226a394847605b6874b1eab7ad7f32c:"$path" > "$path"
+          set +e
+          cargo test -p swc_ecma_minifier --test compress dont_change_in_or_instanceof_expressions -- --nocapture 2>&1 | tee -a instanceof-ab.log
+          baseline_status=${PIPESTATUS[0]}
+          set -e
+          echo "baseline_status=$baseline_status" | tee -a instanceof-ab.log
+
+          cp /tmp/current-mod.rs "$path"
+
+          python <<'PY'
           from pathlib import Path
 
           path = Path("crates/swc_ecma_minifier/src/compress/optimize/mod.rs")
           text = path.read_text()
-
-          old = "    fn is_pure_call_value(&self, e: &Expr) -> bool {\n"
-          new = (
-              "    /// Returns true if `e`'s value is produced directly by a pure-marked call.\n"
-              "    ///\n"
-              "    /// Parentheses and sequence tails are value-transparent. Deliberately stop\n"
-              "    /// there instead of performing general value-flow analysis in this hot path.\n"
-              "    fn is_pure_call_value(&self, e: &Expr) -> bool {\n"
-          )
+          old = '''            }) if self.is_pure_call_value(left) || self.is_pure_call_value(right) => {
+                return Some(e.take());
+            }
+'''
+          new = '''            }) if self.is_pure_call_value(left) || self.is_pure_call_value(right) => {
+                eprintln!(
+                    "PURE_MARK_INSTANCEOF left={} right={}",
+                    dump(&**left, false),
+                    dump(&**right, false)
+                );
+                return Some(e.take());
+            }
+'''
           if text.count(old) != 1:
-              raise RuntimeError("helper insertion point changed")
-          text = text.replace(old, new, 1)
-
-          old = (
-              "            Expr::Bin(BinExpr {\n"
-              "                op: op!(\"instanceof\"),\n"
-              "                left,\n"
-              "                right,\n"
-              "                ..\n"
-              "            }) if self.is_pure_call_value(left) || self.is_pure_call_value(right) => {\n"
-              "                return Some(e.take());\n"
-              "            }\n"
-          )
-          new = (
-              "            // Purity is attached to the call itself; it does not make an `instanceof`\n"
-              "            // operation consuming the returned value side-effect-free.\n"
-              + old
-          )
-          if text.count(old) != 1:
-              raise RuntimeError("instanceof insertion point changed")
+              raise RuntimeError("pure-mark guard changed")
           path.write_text(text.replace(old, new, 1))
+          PY
 
-      - name: Install rustfmt and clippy
-        run: rustup component add rustfmt clippy
-
-      - name: Format and whitespace
-        run: |
-          cargo fmt --all
-          cargo fmt --all -- --check
-          git diff --check
-
-      - name: Clippy minifier
-        run: cargo clippy -p swc_ecma_minifier --all-targets -- -D warnings
-
-      - name: Regenerate library-size snapshot
-        run: UPDATE=1 cargo test -p swc_ecma_minifier --test size bench_libs -- --nocapture
-
-      - name: Verify library-size snapshot
-        run: cargo test -p swc_ecma_minifier --test size bench_libs -- --nocapture
-
-      - name: Focused behavior matrix
-        run: cargo test -p swc_ecma_minifier --test compress instanceof_pure_func_value -- --nocapture
-
-      - name: Full minifier crate
-        id: full_minifier
-        shell: bash
-        run: |
+          echo '=== current pure-mark rule, instrumented ===' | tee -a instanceof-ab.log
           set +e
-          cargo test -p swc_ecma_minifier --no-fail-fast 2>&1 | tee full-minifier.log
-          status=${PIPESTATUS[0]}
-          echo "status=$status" >> "$GITHUB_OUTPUT"
+          cargo test -p swc_ecma_minifier --test compress dont_change_in_or_instanceof_expressions -- --nocapture 2>&1 | tee -a instanceof-ab.log
+          current_status=${PIPESTATUS[0]}
+          set -e
+          echo "current_status=$current_status" | tee -a instanceof-ab.log
+
+          echo '=== focused pure-mark matrix, instrumented ===' | tee -a instanceof-ab.log
+          set +e
+          cargo test -p swc_ecma_minifier --test compress instanceof_pure_func_value -- --nocapture 2>&1 | tee -a instanceof-ab.log
+          matrix_status=${PIPESTATUS[0]}
+          set -e
+          echo "matrix_status=$matrix_status" | tee -a instanceof-ab.log
+
           exit 0
 
-      - name: Upload full minifier log
+      - name: Upload diagnostic log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: full-minifier-log
-          path: full-minifier.log
-
-      - name: Fail on full minifier errors
-        if: steps.full_minifier.outputs.status != '0'
-        run: exit ${{ steps.full_minifier.outputs.status }}
-
-      - name: Commit verified experiment
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git rm .github/workflows/instanceof-pure-mark-verify.yml
-          git add -A
-          git commit -m "experiment: verify pure-marked instanceof handling"
-          git push origin HEAD:experiment/instanceof-pure-mark
+          name: instanceof-pure-mark-ab
+          path: instanceof-ab.log
